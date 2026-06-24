@@ -11,6 +11,7 @@ export type ViewKey =
   | 'gym'
   | 'food'
   | 'work'
+  | 'ai'
 
 interface UIState {
   activeView: ViewKey

@@ -14,6 +14,7 @@ import { PlansView } from '@/components/views/plans'
 import { GymView } from '@/components/views/gym'
 import { FoodView } from '@/components/views/food'
 import { WorkView } from '@/components/views/work'
+import { AiView } from '@/components/views/ai'
 
 export default function Home() {
   const { activeView, setActiveView } = useUIStore()
@@ -28,7 +29,7 @@ export default function Home() {
     const view = params.get('view') as typeof activeView | null
     if (
       view &&
-      ['dashboard', 'tasks', 'reminders', 'plans', 'gym', 'food', 'work'].includes(view)
+      ['dashboard', 'tasks', 'reminders', 'plans', 'gym', 'food', 'work', 'ai'].includes(view)
     ) {
       setActiveView(view)
     }
@@ -87,6 +88,7 @@ export default function Home() {
             {activeView === 'gym' && <GymView />}
             {activeView === 'food' && <FoodView />}
             {activeView === 'work' && <WorkView />}
+            {activeView === 'ai' && <AiView />}
           </motion.div>
         </AnimatePresence>
       </main>
