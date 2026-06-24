@@ -79,11 +79,32 @@ bash start-prod.sh      # jalankan
 
 Buka browser HP → `http://localhost:3000`
 
+### ⚠️ Penting untuk Termux Android
+
+Script `start-termux.sh` sudah otomatis menangani 3 masalah umum di Android:
+
+1. **Turbopack tidak support android/arm64** → otomatis pakai `--webpack`
+2. **Prisma client tidak ter-generate** → otomatis jalankan `prisma generate` sebelum start
+3. **Watchpack EACCES errors** → otomatis set `WATCHPACK_POLLING=true`
+
+**JANGAN jalankan `npm run dev` langsung di Termux** — akan pakai Turbopack yang crash. Selalu pakai `bash start-termux.sh`.
+
+### Kalau sudah pernah install tapi error Prisma
+
+```bash
+# Jalankan script fix khusus
+bash fix-prisma.sh
+
+# Atau reset total kalau masih gagal
+rm -rf node_modules .next
+bash install-termux.sh
+```
+
 ### Akses dari Device Lain di WiFi
 
 Script start otomatis bind ke `0.0.0.0`, jadi bisa diakses dari:
 - Browser HP lain di WiFi yang sama: `http://[IP-HP-Anda]:3000`
-- Cek IP dengan `ifconfig` di Termux
+- Cek IP dengan `ifconfig` di Termux (cari `inet` address)
 
 ---
 
@@ -239,46 +260,170 @@ Semua data tersimpan lokal di `db/custom.db` (SQLite). Tidak ada cloud, tidak ad
 
 ## 🛠️ Troubleshooting
 
+### ⚠️ Error: "Turbopack is not supported for this platform (android/arm64)"
+
+**Penyebab**: Next.js 16 default-nya pakai Turbopack (compiler Rust) yang tidak punya native binary untuk Android ARM64.
+
+**Solusi**: Script `start-termux.sh` sudah otomatis pakai `--webpack` flag (compiler JavaScript). Kalau jalankan manual:
+
+```bash
+# ❌ JANGAN pakai ini di Termux:
+npm run dev
+
+# ✅ Pakai ini di Termux:
+bash start-termux.sh
+# atau manual:
+npx next dev --webpack
+```
+
+---
+
+### ⚠️ Error: "@prisma/client did not initialize yet"
+
+**Penyebab**: Prisma client tidak ter-generate dengan benar untuk platform android-arm64. Biasanya karena:
+1. `postinstall` hook npm tidak jalan
+2. Binary target tidak cocok dengan Termux
+3. node_modules dicopy dari platform lain
+
+**Solusi Cepat**:
+```bash
+# Jalankan script fix khusus
+bash fix-prisma.sh
+```
+
+**Solusi Manual**:
+```bash
+# 1. Hapus cache lama
+rm -rf node_modules/.prisma .next
+
+# 2. Regenerate Prisma client
+npx prisma generate
+
+# 3. Test
+node -e "const {PrismaClient}=require('@prisma/client'); new PrismaClient().\$connect().then(()=>console.log('OK'))"
+
+# 4. Jalankan lagi
+bash start-termux.sh
+```
+
+**Kalau masih gagal** — reset total:
+```bash
+rm -rf node_modules .next db/custom.db
+bash install-termux.sh
+```
+
+---
+
+### ⚠️ Error: "Watchpack Error (watcher): EACCES: permission denied, watch '/data'"
+
+**Penyebab**: Webpack's file watcher (inotify) coba watch folder sistem Android (`/`, `/data`, `/data/data`) yang tidak bisa diakses Termux.
+
+**Solusi**: Script `start-termux.sh` sudah set env vars:
+- `WATCHPACK_POLLING=true` — pakai polling instead of inotify
+- `CHOKIDAR_USEPOLLING=true` — same untuk chokidar
+
+Error ini sebenarnya **tidak fatal** — app tetap jalan, tapi log berisik. Kalau sangat mengganggu, jalankan via `start-termux.sh` (bukan `npm run dev` langsung).
+
+---
+
 ### Port 3000 sudah dipakai
+
 Edit `.env`:
 ```
 PORT=3001
 ```
-Atau jalankan: `PORT=3001 npm run dev`
+Atau jalankan: `PORT=3001 bash start-termux.sh`
+
+---
 
 ### Database corrupt / reset
+
 ```bash
+# Stop server dulu (Ctrl+C)
 rm db/custom.db
 npx prisma db push
+bash start-termux.sh
 ```
 
-### Service worker tidak update
-- Buka DevTools → Application → Service Workers → Unregister
+---
+
+### Service worker tidak update (PWA cache lama)
+
+- Buka DevTools (Chrome: F12 atau menu ⋮ → More tools → Developer tools)
+- Tab **Application** → **Service Workers** → klik **Unregister**
+- Tab **Application** → **Storage** → **Clear site data**
 - Refresh page
-- Atau tambah `?v=2` di URL untuk bypass cache
 
-### AI error 500
-- Cek apakah `ZAI_API_KEY` ada di `.env`
-- Cek log server di terminal
+Atau buka halaman dengan `?v=2` di URL untuk bypass cache.
+
+---
+
+### AI error 500 (endpoint `/api/ai/*`)
+
+- Cek apakah `ZAI_API_KEY` ada di `.env` (atau otomatis disediakan platform)
+- Cek log server di terminal tempat server jalan
 - AI butuh internet, pastikan HP online
+- Test koneksi: `curl https://api.z.ai/health`
 
-### Build gagal di Termux (memory)
+Kalau tidak mau pakai AI, fitur lain (Tasks, Reminders, Plans, Gym, Food, Work) tetap jalan normal.
+
+---
+
+### Build gagal di Termux (memory/RAM kurang)
+
+HP dengan RAM <3GB mungkin OOM saat build. Solusi:
+
 ```bash
-# Naikkan swap atau tutup app lain
-# Atau build dengan memory limit
-NODE_OPTIONS="--max-old-space-size=512" npm run build
+# Tutup app lain dulu, lalu build dengan memory limit
+NODE_OPTIONS="--max-old-space-size=512" bash build-termux.sh
+
+# Atau pakai swap (butuh root atau Termux:Boot)
+# Atau pakai mode dev saja (tidak perlu build)
+bash start-termux.sh
 ```
 
-### Tidak bisa diakses dari device lain
+---
+
+### Tidak bisa diakses dari device lain di WiFi
+
 - Pastikan kedua device di WiFi yang sama
-- Cek IP HP: `ifconfig` di Termux (cari `inet` address)
-- Pastikan firewall tidak block port 3000
-- Beberapa router isolasi client — cek router settings
+- Cek IP HP: jalankan `ifconfig` di Termux, cari `inet` address (biasanya 192.168.x.x)
+- Pastikan tidak ada firewall yang block port 3000
+- Beberapa router mengaktifkan "Client Isolation" — cek router settings
+- Pastikan jalankan dengan `bash start-termux.sh` (bukan `--local` flag)
+
+---
 
 ### Backup file tidak bisa di-import
-- Pastikan file adalah JSON valid
+
+- Pastikan file adalah JSON valid: `cat backup.json | python3 -m json.tool`
 - Pastikan format sesuai (ada field `data` dengan array per model)
-- Cek file dengan: `cat backup.json | python3 -m json.tool`
+- Coba mode "Merge" dulu (lebih aman dari "Replace")
+
+---
+
+### App lemot / baterai cepat habis
+
+- Pakai **mode production** (build sekali, jalankan berkali-kali):
+  ```bash
+  bash build-termux.sh
+  bash start-prod.sh
+  ```
+- Matikan AI features kalau tidak dipakai (edit `.env`, kosongkan `ZAI_API_KEY`)
+- Tutup app lain yang berat
+- Pakai wake-lock hanya saat perlu: `termux-wake-release` untuk matikan
+
+---
+
+### Permission denied saat install
+
+```bash
+# Beri permission execute ke semua script
+chmod +x *.sh
+
+# Atau jalankan dengan bash eksplisit
+bash install-termux.sh
+```
 
 ---
 

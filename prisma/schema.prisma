@@ -2,7 +2,12 @@
 // Self-hosted on Termux with SQLite
 
 generator client {
-  provider = "prisma-client-js"
+  provider        = "prisma-client-js"
+  // Binary targets: native (auto-detect) + explicit linux-arm64 builds for Termux Android.
+  // Termux on Android ARM64 reports as linux-arm64 but Prisma's auto-detection
+  // sometimes fails, so we list the common targets explicitly.
+  // OpenSSL 3.x = newer Termux (2023+), OpenSSL 1.1.x = older Termux.
+  binaryTargets   = ["native", "linux-arm64-openssl-3.0.x", "linux-arm64-openssl-1.1.x"]
 }
 
 datasource db {

@@ -18,13 +18,22 @@ if [ ! -d "node_modules" ]; then
   exit 1
 fi
 
-echo "[1/3] Generate Prisma client..."
+# Set env vars untuk Termux compatibility
+export WATCHPACK_POLLING=true
+export CHOKIDAR_USEPOLLING=true
+export NEXT_TELEMETRY_DISABLED=1
+
+echo "[1/4] Generate Prisma client (penting sebelum build)..."
 npx prisma generate
 
-echo "[2/3] Build aplikasi (mungkin butuh 5-10 menit)..."
-npm run build
+echo "[2/4] Push schema ke database (kalau ada perubahan)..."
+npx prisma db push
 
-echo "[3/3] Build selesai!"
+echo "[3/4] Build aplikasi (mungkin butuh 5-15 menit di HP)..."
+echo "      Build pakai webpack (Turbopack tidak support android/arm64)"
+NEXT_TELEMETRY_DISABLED=1 npx next build --webpack
+
+echo "[4/4] Build selesai!"
 echo ""
 echo "============================================"
 echo "  ✓ Production build siap!"
@@ -34,6 +43,7 @@ echo "Cara menjalankan (mode production):"
 echo "  bash start-prod.sh"
 echo ""
 echo "Keuntungan mode production:"
-echo "  - Lebih cepat (no hot reload)"
+echo "  - Lebih cepat (no hot reload, code optimized)"
 echo "  - Lebih hemat RAM/baterai"
 echo "  - Cocok untuk pemakaian harian"
+echo "  - Tidak ada error Watchpack (tidak ada file watcher)"
