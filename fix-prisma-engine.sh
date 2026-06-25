@@ -34,30 +34,42 @@ else
   echo "    [?] Architecture tidak dikenali: $ARCH"
 fi
 
-# 2. Hapus SEMUA binary Prisma lama (yang salah architecture)
+# 2. Hapus cache Prisma client yang salah architecture
+#    PENTING: JANGAN hapus node_modules/@prisma/engines — itu package npm!
+#    Hanya hapus node_modules/.prisma (cache generated client)
 echo ""
-echo "[2/6] Hapus SEMUA binary Prisma lama (yang salah architecture)..."
-echo "    File yang dihapus:"
-# List dulu file binary yang ada supaya user lihat
-find node_modules/.prisma/client -name "*.so.node" 2>/dev/null | head -5 || echo "    (tidak ada binary)"
-find node_modules/@prisma/engines -name "*.so.node" 2>/dev/null | head -5 || echo "    (tidak ada binary engine)"
+echo "[2/6] Hapus cache Prisma client yang salah architecture..."
+echo "    File binary yang akan dihapus:"
+find node_modules/.prisma/client -name "*.so.node" 2>/dev/null | head -5 || echo "    (tidak ada binary di .prisma)"
 
-# Hapus semua
+# Hanya hapus .prisma (cache), JANGAN hapus @prisma/engines (npm package)
 rm -rf node_modules/.prisma 2>/dev/null || true
-rm -rf node_modules/@prisma/engines 2>/dev/null || true
-rm -rf node_modules/@prisma/client/node_modules 2>/dev/null || true
 # Hapus juga cache Next.js yang mungkin cache binary lama
 rm -rf .next/cache 2>/dev/null || true
-echo "    ✓ Semua binary Prisma lama dihapus"
+echo "    ✓ Cache Prisma client dihapus"
 
-# 3. Set env vars untuk force library engine
+# Cek apakah @prisma/engines package masih ada (harus ada)
+if [ ! -d "node_modules/@prisma/engines" ]; then
+  echo "    [!] @prisma/engines package hilang — reinstall..."
+  npm install @prisma/engines --no-audit --no-fund 2>&1 | tail -3
+fi
+
+# 3. Set env vars untuk force library engine + ARM64 binary
 echo ""
-echo "[3/6] Set env vars untuk force library engine (WASM)..."
+echo "[3/6] Set env vars untuk force ARM64 binary..."
+
+# Deteksi architecture
+ARCH=$(uname -m 2>/dev/null || echo "unknown")
+echo "    Architecture: $ARCH"
+
 export PRISMA_CLIENT_ENGINE_TYPE=library
-# Tambahan: bypass detection yang salah
-export PRISMA_FORCE_PANIC_ACTION=js
-# Mirror cepat untuk download
 export PRISMA_ENGINES_MIRROR=https://binaries.prisma.sh
+
+# Cek apakah @prisma/engines package ada (harus ada — jangan dihapus!)
+if [ ! -d "node_modules/@prisma/engines" ]; then
+  echo "    [!] @prisma/engines package hilang — reinstall..."
+  npm install @prisma/engines --no-audit --no-fund 2>&1 | tail -3
+fi
 
 # 4. Verify schema.prisma sudah pakai engineType = "library"
 echo ""
@@ -77,31 +89,41 @@ else
   exit 1
 fi
 
-# 5. Generate ulang Prisma client dengan engine library
+# 5. Generate ulang Prisma client
 echo ""
-echo "[5/6] Generate Prisma client dengan engine library (WASM)..."
-echo "    Ini akan download library engine, BUKAN native binary"
-echo "    Library engine ~10MB, working di semua architecture"
+echo "[5/6] Generate Prisma client..."
+echo "    Schema akan download binary untuk: native + linux-arm64-*"
 echo ""
 
 npx prisma generate --force-reset 2>&1 | tail -20
 
-# 6. Verify tidak ada .so.node lagi
+# Set PRISMA_QUERY_ENGINE_BINARY untuk ARM64
+if [[ "$ARCH" == "aarch64" || "$ARCH" == "arm64" ]]; then
+  echo ""
+  echo "    Cari binary ARM64 untuk di-paksa pakai..."
+  for bin in "libquery_engine-linux-arm64-openssl-3.0.x.so.node" "libquery_engine-linux-arm64-openssl-1.1.x.so.node"; do
+    if [ -f "node_modules/.prisma/client/$bin" ]; then
+      export PRISMA_QUERY_ENGINE_BINARY="$(pwd)/node_modules/.prisma/client/$bin"
+      echo "    ✓ Force engine binary: $PRISMA_QUERY_ENGINE_BINARY"
+      break
+    fi
+  done
+  if [ -z "$PRISMA_QUERY_ENGINE_BINARY" ]; then
+    echo "    [!] Binary ARM64 tidak ditemukan setelah generate!"
+    echo "    File yang ada di .prisma/client/:"
+    ls node_modules/.prisma/client/ 2>/dev/null | head -10
+  fi
+fi
+
+# 6. Verify binary ada
 echo ""
-echo "[6/6] Verify binary .so.node sudah hilang..."
-SO_FILES=$(find node_modules/.prisma -name "*.so.node" 2>/dev/null | head -3)
+echo "[6/6] Verify binary..."
+SO_FILES=$(find node_modules/.prisma -name "*.so.node" 2>/dev/null | head -5)
 if [ -z "$SO_FILES" ]; then
-  echo "    ✓ Tidak ada file .so.node (native binary) — engine library aktif!"
-  echo ""
-  echo "    File yang ada di .prisma/client:"
-  ls node_modules/.prisma/client/ 2>/dev/null | head -10
+  echo "    [!] Tidak ada file .so.node — generate mungkin gagal"
 else
-  echo "    [!] Masih ada file .so.node:"
-  echo "$SO_FILES"
-  echo ""
-  echo "    Hapus manual dan coba lagi:"
-  echo "    rm -rf node_modules/.prisma"
-  echo "    PRISMA_CLIENT_ENGINE_TYPE=library npx prisma generate --force-reset"
+  echo "    Binary yang ada:"
+  echo "$SO_FILES" | sed 's/^/    /'
 fi
 
 # 7. Test Prisma bisa dipakai
@@ -111,12 +133,14 @@ echo "  Test Prisma..."
 echo "============================================"
 node -e "
 process.env.PRISMA_CLIENT_ENGINE_TYPE = 'library';
+if (process.env.PRISMA_QUERY_ENGINE_BINARY) {
+  console.log('Using engine binary:', process.env.PRISMA_QUERY_ENGINE_BINARY);
+}
 const { PrismaClient } = require('@prisma/client');
 const p = new PrismaClient();
 p.\$connect()
   .then(() => {
     console.log('    ✓ Berhasil connect ke database!');
-    console.log('    ✓ Engine: library (WASM, no native binary)');
     return p.task.findMany({ take: 1 });
   })
   .then((tasks) => {
@@ -139,10 +163,16 @@ p.\$connect()
     console.log('');
     console.log('    [!] GAGAL:', e.message);
     console.log('');
-    console.log('Coba manual:');
-    console.log('  rm -rf node_modules/.prisma');
-    console.log('  PRISMA_CLIENT_ENGINE_TYPE=library npx prisma generate');
-    console.log('  bash start-termux.sh');
+    if (e.message.includes('EM_X86_64') || e.message.includes('AARCH64')) {
+      console.log('    Arch mismatch masih terjadi. Coba:');
+      console.log('    export PRISMA_QUERY_ENGINE_BINARY=$(pwd)/node_modules/.prisma/client/libquery_engine-linux-arm64-openssl-3.0.x.so.node');
+      console.log('    bash start-termux.sh');
+    } else {
+      console.log('Coba manual:');
+      console.log('  rm -rf node_modules/.prisma');
+      console.log('  npx prisma generate');
+      console.log('  bash start-termux.sh');
+    }
     process.exit(1);
   });
 "

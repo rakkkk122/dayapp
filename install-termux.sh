@@ -62,7 +62,8 @@ if [ -d "node_modules/prisma" ]; then
     if [ "$SO_COUNT" -gt 0 ]; then
       echo "    [!] Ditemukan $SO_COUNT native binary (mungkin salah arch x86_64)"
       echo "    Hapus untuk regenerate dengan engine library..."
-      rm -rf node_modules/.prisma node_modules/@prisma/engines 2>/dev/null
+      # PENTING: hanya hapus .prisma (cache), JANGAN hapus @prisma/engines (npm package)
+      rm -rf node_modules/.prisma 2>/dev/null
     fi
   fi
 else

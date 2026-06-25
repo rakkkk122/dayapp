@@ -3,15 +3,14 @@
 
 generator client {
   provider        = "prisma-client-js"
-  // === ENGINE LIBRARY (WASM) — PENTING UNTUK TERMUX ANDROID ===
-  // Engine "library" pakai WASM/JS, TIDAK butuh native binary (.so.node).
-  // Ini fix error: "is for EM_X86_64 (62) instead of EM_AARCH64 (183)"
-  // karena Prisma auto-detect platform Android salah → ambil binary x86_64.
-  // Dengan library engine, tidak ada binary download sama sekali.
+  // Engine "library" = load libquery_engine via Node.js FFI (default, lebih cepat)
   engineType      = "library"
-  // Tetap set binaryTargets sebagai fallback (kalau engineType tidak di-respect)
-  // Hanya ARM64, jangan pakai "native" (auto-detect salah di Android)
-  binaryTargets   = ["linux-arm64-openssl-3.0.x", "linux-arm64-openssl-1.1.x"]
+  // Binary targets: native (untuk sandbox/dev PC) + ARM64 (untuk Termux Android)
+  // "native" dipakai saat development di PC x86_64
+  // "linux-arm64-*" dipakai di Termux Android ARM64
+  // Saat runtime di Termux, env var PRISMA_QUERY_ENGINE_BINARY akan paksa pakai arm64 binary
+  // (karena auto-detect Prisma di Android salah → ambil x86_64)
+  binaryTargets   = ["native", "linux-arm64-openssl-3.0.x", "linux-arm64-openssl-1.1.x"]
 }
 
 datasource db {

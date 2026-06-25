@@ -62,22 +62,69 @@ fi
 export PRISMA_CLIENT_ENGINE_TYPE=library
 export PRISMA_ENGINES_MIRROR=https://binaries.prisma.sh
 
+# ===== DETECT & FORCE ARM64 BINARY =====
+# Di Termux Android, Prisma auto-detect platform salah (deteksi "linux" → ambil x86_64)
+# Padahal HP Android adalah ARM64. Solusi: paksa pakai arm64 binary via env var.
+ARCH=$(uname -m 2>/dev/null || echo "")
+if [[ "$ARCH" == "aarch64" || "$ARCH" == "arm64" ]]; then
+  # Cari arm64 binary yang ada di .prisma/client/
+  ARM64_BIN=""
+  for bin in "libquery_engine-linux-arm64-openssl-3.0.x.so.node" "libquery_engine-linux-arm64-openssl-1.1.x.so.node"; do
+    if [ -f "node_modules/.prisma/client/$bin" ]; then
+      ARM64_BIN="$(pwd)/node_modules/.prisma/client/$bin"
+      break
+    fi
+  done
+  if [ -n "$ARM64_BIN" ]; then
+    export PRISMA_QUERY_ENGINE_BINARY="$ARM64_BIN"
+    echo "    [i] ARM64 detected, force engine binary: $ARM64_BIN"
+  else
+    echo "    [!] ARM64 detected tapi binary belum ada. Akan di-generate..."
+  fi
+fi
+
 # Cek apakah ada binary .so.node lama (yang salah arch)
 SO_COUNT=$(find node_modules/.prisma -name "*.so.node" 2>/dev/null | wc -l)
 if [ "$SO_COUNT" -gt 0 ]; then
-  echo "    [!] Ditemukan $SO_COUNT native binary lama (salah arch)"
-  echo "    Hapus dan regenerate dengan engine library..."
-  rm -rf node_modules/.prisma 2>/dev/null
-  rm -rf node_modules/@prisma/engines 2>/dev/null
-  npx prisma generate --force-reset 2>&1 | tail -5
+  # Cek apakah ada arm64 binary
+  ARM64_COUNT=$(find node_modules/.prisma -name "*arm64*" 2>/dev/null | wc -l)
+  if [ "$ARM64_COUNT" -gt 0 ]; then
+    echo "    ✓ Prisma client sudah ada binary ARM64"
+  else
+    echo "    [!] Binary Prisma ada tapi TIDAK ada ARM64 — regenerate..."
+    rm -rf node_modules/.prisma 2>/dev/null
+    npx prisma generate --force-reset 2>&1 | tail -5
+    # Set ulang env var setelah generate
+    for bin in "libquery_engine-linux-arm64-openssl-3.0.x.so.node" "libquery_engine-linux-arm64-openssl-1.1.x.so.node"; do
+      if [ -f "node_modules/.prisma/client/$bin" ]; then
+        export PRISMA_QUERY_ENGINE_BINARY="$(pwd)/node_modules/.prisma/client/$bin"
+        echo "    [i] Force engine binary: $PRISMA_QUERY_ENGINE_BINARY"
+        break
+      fi
+    done
+  fi
 else
   # Cek apakah Prisma client sudah ter-generate sama sekali
   if [ ! -d "node_modules/.prisma/client" ]; then
     echo "    [i] Prisma client belum ada, generate..."
     npx prisma generate 2>&1 | tail -5
+    # Set env var setelah generate
+    for bin in "libquery_engine-linux-arm64-openssl-3.0.x.so.node" "libquery_engine-linux-arm64-openssl-1.1.x.so.node"; do
+      if [ -f "node_modules/.prisma/client/$bin" ]; then
+        export PRISMA_QUERY_ENGINE_BINARY="$(pwd)/node_modules/.prisma/client/$bin"
+        echo "    [i] Force engine binary: $PRISMA_QUERY_ENGINE_BINARY"
+        break
+      fi
+    done
   else
-    echo "    ✓ Prisma client sudah ter-generate (library engine)"
+    echo "    ✓ Prisma client sudah ter-generate"
   fi
+fi
+
+# Cek apakah @prisma/engines package masih ada (harus ada — jangan dihapus!)
+if [ ! -d "node_modules/@prisma/engines" ]; then
+  echo "    [!] @prisma/engines package hilang — reinstall..."
+  npm install @prisma/engines --no-audit --no-fund 2>&1 | tail -3
 fi
 
 # Verify tidak ada binary .so.node lagi
