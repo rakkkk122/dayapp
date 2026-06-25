@@ -5,12 +5,12 @@ generator client {
   provider        = "prisma-client-js"
   // Engine "library" = load libquery_engine via Node.js FFI (default, lebih cepat)
   engineType      = "library"
-  // Binary targets: native (untuk sandbox/dev PC) + ARM64 (untuk Termux Android)
-  // "native" dipakai saat development di PC x86_64
-  // "linux-arm64-*" dipakai di Termux Android ARM64
-  // Saat runtime di Termux, env var PRISMA_QUERY_ENGINE_BINARY akan paksa pakai arm64 binary
-  // (karena auto-detect Prisma di Android salah → ambil x86_64)
-  binaryTargets   = ["native", "linux-arm64-openssl-3.0.x", "linux-arm64-openssl-1.1.x"]
+  // Binary targets — JANGAN pakai "native" karena di Termux Android:
+  //   Prisma auto-detect sebagai "debian-openssl-1.1.x" lalu download x86_64 binary
+  //   padahal HP Android adalah ARM64 → error "EM_X86_64 instead of EM_AARCH64"
+  // Solusi: list eksplisit semua target (arm64 untuk Termux, debian untuk PC)
+  // Lalu di script start, hapus binary yang salah arch supaya Prisma pakai yang benar
+  binaryTargets   = ["linux-arm64-openssl-3.0.x", "linux-arm64-openssl-1.1.x", "debian-openssl-3.0.x", "debian-openssl-1.1.x"]
 }
 
 datasource db {
