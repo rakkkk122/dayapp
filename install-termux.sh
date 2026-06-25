@@ -104,7 +104,7 @@ export PRISMA_ENGINES_MIRROR=https://binaries.prisma.sh
 
 # Hapus dulu binary lama kalau ada
 rm -rf node_modules/.prisma 2>/dev/null || true
-npx prisma generate --force-reset 2>&1 | tail -5
+npx prisma generate 2>&1 | tail -5
 
 # Init database
 echo "    Init database SQLite..."

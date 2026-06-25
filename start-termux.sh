@@ -86,7 +86,7 @@ fi
 if [ "$NEED_REGEN" = true ]; then
   echo "    Generate Prisma client..."
   rm -rf node_modules/.prisma 2>/dev/null
-  PRISMA_CLIENT_ENGINE_TYPE=library npx prisma generate --force-reset 2>&1 | tail -5
+  PRISMA_CLIENT_ENGINE_TYPE=library npx prisma generate 2>&1 | tail -5
 fi
 
 # HAPUS binary salah architecture

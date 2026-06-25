@@ -83,14 +83,16 @@ echo "    Schema akan download binary untuk arm64 + debian"
 echo "    (4 binary total, masing-masing ~5MB)"
 echo ""
 
-PRISMA_CLIENT_ENGINE_TYPE=library npx prisma generate --force-reset 2>&1 | tail -15
+# Prisma 6 tidak punya flag --force-reset, jadi cukup `prisma generate`
+# (cache sudah dihapus di step 4, jadi ini generate dari nol)
+PRISMA_CLIENT_ENGINE_TYPE=library npx prisma generate 2>&1 | tail -15
 
 # Cek apakah generate berhasil
 if [ ! -d "node_modules/.prisma/client" ]; then
   echo ""
   echo "    [!] Generate GAGAL — .prisma/client tidak ada"
   echo "    Coba jalankan manual untuk lihat error:"
-  echo "    npx prisma generate --force-reset"
+  echo "    npx prisma generate"
   exit 1
 fi
 

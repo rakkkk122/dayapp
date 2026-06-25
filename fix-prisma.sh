@@ -79,7 +79,7 @@ if [ -d "node_modules/.prisma/client" ]; then
   ls node_modules/.prisma/client/ 2>&1 | head -5
 else
   echo "    [!] Folder .prisma/client tidak ditemukan — generate gagal"
-  echo "    Coba: PRISMA_CLIENT_ENGINE_TYPE=library npx prisma generate --force-reset"
+  echo "    Coba: PRISMA_CLIENT_ENGINE_TYPE=library npx prisma generate"
 fi
 
 # 6. Test Prisma bisa dipakai
