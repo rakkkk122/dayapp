@@ -68,15 +68,26 @@ export function DashboardView() {
   const { setActiveView } = useUIStore()
   const [data, setData] = React.useState<DashboardData | null>(null)
   const [loading, setLoading] = React.useState(true)
+  const [errorMsg, setErrorMsg] = React.useState<string | null>(null)
 
   const load = React.useCallback(async () => {
     try {
+      setErrorMsg(null)
       const res = await fetch('/api/dashboard')
-      if (!res.ok) throw new Error('fail')
+      if (!res.ok) {
+        // Coba ambil pesan error dari response body
+        let detail = `HTTP ${res.status}`
+        try {
+          const errBody = await res.json()
+          if (errBody?.error) detail = errBody.error
+        } catch {}
+        throw new Error(detail)
+      }
       const json = await res.json()
       setData(json)
-    } catch (e) {
-      console.error(e)
+    } catch (e: any) {
+      console.error('Dashboard load error:', e)
+      setErrorMsg(e?.message || 'Gagal memuat dashboard')
     } finally {
       setLoading(false)
     }
@@ -86,7 +97,7 @@ export function DashboardView() {
     load()
   }, [load])
 
-  if (loading || !data) {
+  if (loading && !data && !errorMsg) {
     return (
       <div className="space-y-4 p-4">
         {[1, 2, 3].map((i) => (
@@ -94,6 +105,41 @@ export function DashboardView() {
         ))}
       </div>
     )
+  }
+
+  if (errorMsg && !data) {
+    return (
+      <div className="p-4 max-w-3xl mx-auto">
+        <div className="rounded-2xl border border-destructive/30 bg-destructive/5 p-6 text-center">
+          <div className="text-4xl mb-3">⚠️</div>
+          <h2 className="text-lg font-bold text-destructive mb-2">
+            Gagal Memuat Dashboard
+          </h2>
+          <p className="text-sm text-muted-foreground mb-4">
+            Error: <code className="text-xs bg-muted px-1.5 py-0.5 rounded">{errorMsg}</code>
+          </p>
+          <div className="text-xs text-muted-foreground bg-muted/50 p-3 rounded-lg text-left space-y-1.5">
+            <p className="font-semibold text-foreground">Kemungkinan penyebab:</p>
+            <p>• Prisma engine belum ter-setup dengan benar (arch mismatch)</p>
+            <p>• Database belum di-init</p>
+            <p className="mt-2 font-semibold text-foreground">Solusi:</p>
+            <p>1. Jalankan: <code className="bg-background px-1 rounded">bash fix-prisma-engine.sh</code></p>
+            <p>2. Restart: <code className="bg-background px-1 rounded">bash start-termux.sh</code></p>
+            <p>3. Refresh halaman ini</p>
+          </div>
+          <button
+            onClick={() => load()}
+            className="mt-4 text-sm px-4 py-2 rounded-lg bg-primary text-primary-foreground hover:opacity-90"
+          >
+            Coba Lagi
+          </button>
+        </div>
+      </div>
+    )
+  }
+
+  if (!data) {
+    return null
   }
 
   const today = new Date().toLocaleDateString('id-ID', {
