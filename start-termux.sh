@@ -63,6 +63,17 @@ else
   DELETE_PATTERN="debian"
 fi
 
+# Install system dependencies untuk Prisma binary di ARM64 (Termux Android)
+# libgcc_s.so.1 = dibutuhkan untuk dlopen C++ binary
+if [[ "$ARCH" == "aarch64" || "$ARCH" == "arm64" ]]; then
+  if [ ! -f "/data/data/com.termux/files/usr/lib/libgcc_s.so.1" ]; then
+    echo "    [i] Install libgcc & libc++ (diperlukan Prisma binary)..."
+    pkg install libgcc libc++ -y 2>&1 | tail -3 || true
+  fi
+  # Set LD_LIBRARY_PATH supaya Prisma binary bisa find libgcc_s.so.1
+  export LD_LIBRARY_PATH="/data/data/com.termux/files/usr/lib:${LD_LIBRARY_PATH:-}"
+fi
+
 # Cek @prisma/engines package (harus ada — jangan dihapus!)
 if [ ! -d "node_modules/@prisma/engines" ]; then
   echo "    [!] @prisma/engines package hilang — reinstall..."

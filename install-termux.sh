@@ -45,6 +45,17 @@ else
   echo "[3.5/8] OpenSSL sudah ada: $(openssl version | head -1)"
 fi
 
+# Install library yang dibutuhkan Prisma native binary di Termux
+# libgcc_s.so.1 dan libc++ diperlukan untuk dlopen C++ binary (Prisma engine)
+echo "[3.6/8] Install libgcc & libc++ (diperlukan Prisma binary)..."
+pkg install libgcc libc++ -y > /dev/null 2>&1 || true
+if [ -f "/data/data/com.termux/files/usr/lib/libgcc_s.so.1" ]; then
+  echo "    ✓ libgcc_s.so.1 tersedia"
+else
+  echo "    [!] libgcc belum terinstall — mungkin Prisma akan error"
+  echo "    Coba manual: pkg install libgcc libc++ libstdc++"
+fi
+
 # Hapus node_modules lama kalau ada Prisma 7 atau binary salah arch
 echo ""
 echo "[4/8] Cek versi Prisma yang ada..."
