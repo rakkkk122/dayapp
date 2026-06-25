@@ -260,6 +260,115 @@ Semua data tersimpan lokal di `db/custom.db` (SQLite). Tidak ada cloud, tidak ad
 
 ## 🛠️ Troubleshooting
 
+### ⚠️ Error: "@prisma/client did not initialize yet" atau "prisma schema validation"
+
+**Akar Penyebab**: Project ini pakai **Prisma 6.11.1**, tapi `npm install` di Termux Anda mungkin resolve ke **Prisma 7.x** yang punya breaking changes (datasource `url` tidak lagi didukung, dll).
+
+Ciri-ciri Prisma 7 terpasang:
+- Error: `the datasource property 'url' is no longer supported in schema files`
+- Error: `prisma schema validation - get-config-wasm`
+- Error: `move connection urls to 'prisma.config.ts'`
+- `npx prisma --version` menunjukkan `7.x.x`
+
+**Solusi Cepat**:
+```bash
+# Jalankan script fix khusus (auto-detect & downgrade Prisma 7)
+bash fix-prisma.sh
+```
+
+**Solusi Manual — Downgrade ke Prisma 6**:
+```bash
+# 1. Hapus Prisma 7 + cache
+rm -rf node_modules/prisma node_modules/@prisma node_modules/.prisma
+rm -f package-lock.json bun.lock
+
+# 2. Install Prisma 6 exact version (pinned)
+npm install prisma@6.11.1 @prisma/client@6.11.1 --save-exact --no-audit --no-fund
+
+# 3. Verify version (harus 6.11.1)
+node -p "require('./node_modules/prisma/package.json').version"
+
+# 4. Generate client dengan engine library (penting untuk android-arm64)
+PRISMA_CLIENT_ENGINE_TYPE=library npx prisma generate
+
+# 5. Test
+node -e "const {PrismaClient}=require('@prisma/client'); new PrismaClient().\$connect().then(()=>console.log('OK'))"
+
+# 6. Jalankan app
+bash start-termux.sh
+```
+
+**Kenapa pakai `PRISMA_CLIENT_ENGINE_TYPE=library`?**
+Prisma default-nya pakai native binary engine (file `.so.node`) yang sering tidak tersedia untuk android-arm64. Engine "library" pakai WASM/JS yang bekerja di semua platform.
+
+Script `start-termux.sh` dan `fix-prisma.sh` sudah otomatis set env var ini.
+
+---
+
+### ⚠️ Error: "_interop_require_wildcard is not a function" / halaman blank berkedip
+
+**Gejala**:
+- Halaman web blank putih / berkedip cepat
+- Browser console error: `_interop_require_wildcard is not a function`
+- Call stack: `app-pages-browser/./node_modules/next/dist/client/router.js`
+- Di Termux: `GET / 200` (server OK, tapi client error)
+
+**Akar Penyebab** (salah satu dari):
+1. **Node.js versi terlalu lama** — Next.js 16 butuh Node.js 18.18+ (recommended 20+)
+2. **Cache `.next/dev` corrupt** — chunk JS partial/rusak
+3. **Service Worker cache chunk lama** — SW menyimpan versi lama yang konflik dengan dev server
+
+**Diagnosa cepat**:
+```bash
+bash diagnose.sh
+```
+Lihat output — terutama bagian Node.js version dan installed versions.
+
+**Solusi 1: Cek & upgrade Node.js** (paling sering)
+```bash
+node --version
+# Kalau < 18, upgrade:
+pkg install nodejs-lts
+# Verify
+node --version  # harus >= 18.18, recommended 20+
+
+# Restart app
+bash start-termux.sh
+```
+
+**Solusi 2: Clear browser cache** (wajib kalau pernah akses sebelumnya)
+- Chrome → menu ⋮ → **History** → **Clear browsing data** → pilih **Cached images and files**
+- Atau buka **incognito mode** untuk test apakah cache browser penyebabnya
+- Atau Chrome → **Application** → **Service Workers** → **Unregister**
+- Atau Chrome → **Application** → **Storage** → **Clear site data**
+
+**Solusi 3: Clear .next cache di Termux**
+```bash
+# Stop server dulu (Ctrl+C)
+rm -rf .next
+bash start-termux.sh
+```
+
+**Solusi 4: Reset total kalau semua gagal**
+```bash
+rm -rf .next node_modules/.cache
+bash start-termux.sh
+# Lalu di browser: clear cache + incognito mode
+```
+
+**Kenapa ini terjadi?**
+- Next.js 16 + React 19 generate chunk JS yang sangat modern (ESM, async, dkk)
+- Browser cache chunk lama dari sesi sebelumnya
+- Saat dev server rebuild, hash chunk berubah, tapi browser masih load chunk lama dari cache
+- Chunk lama reference function yang tidak ada di chunk baru → error
+
+Script `start-termux.sh` versi baru sudah otomatis:
+- Hapus `.next/cache` di awal start
+- Skip SW registration di dev mode (SW hanya aktif di production)
+- Unregister SW yang mungkin terpasang dari sesi production sebelumnya
+
+---
+
 ### ⚠️ Error: "Turbopack is not supported for this platform (android/arm64)"
 
 **Penyebab**: Next.js 16 default-nya pakai Turbopack (compiler Rust) yang tidak punya native binary untuk Android ARM64.
@@ -274,42 +383,6 @@ npm run dev
 bash start-termux.sh
 # atau manual:
 npx next dev --webpack
-```
-
----
-
-### ⚠️ Error: "@prisma/client did not initialize yet"
-
-**Penyebab**: Prisma client tidak ter-generate dengan benar untuk platform android-arm64. Biasanya karena:
-1. `postinstall` hook npm tidak jalan
-2. Binary target tidak cocok dengan Termux
-3. node_modules dicopy dari platform lain
-
-**Solusi Cepat**:
-```bash
-# Jalankan script fix khusus
-bash fix-prisma.sh
-```
-
-**Solusi Manual**:
-```bash
-# 1. Hapus cache lama
-rm -rf node_modules/.prisma .next
-
-# 2. Regenerate Prisma client
-npx prisma generate
-
-# 3. Test
-node -e "const {PrismaClient}=require('@prisma/client'); new PrismaClient().\$connect().then(()=>console.log('OK'))"
-
-# 4. Jalankan lagi
-bash start-termux.sh
-```
-
-**Kalau masih gagal** — reset total:
-```bash
-rm -rf node_modules .next db/custom.db
-bash install-termux.sh
 ```
 
 ---
