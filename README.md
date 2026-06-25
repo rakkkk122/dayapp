@@ -260,6 +260,59 @@ Semua data tersimpan lokal di `db/custom.db` (SQLite). Tidak ada cloud, tidak ad
 
 ## 🛠️ Troubleshooting
 
+### ⚠️ Error: "is for EM_X86_64 (62) instead of EM_AARCH64 (183)" — Architecture Mismatch
+
+**Gejala**:
+- API return 500 error
+- Log: `Unable to require(.../libquery_engine-debian-openssl-1.1.x.so.node)`
+- Log: `is for EM_X86_64 (62) instead of EM_AARCH64 (183)`
+- Log: `The Prisma engines do not seem to be compatible with your system`
+
+**Akar Penyebab**: Prisma auto-detect platform Android sebagai "linux" lalu download binary untuk **x86_64** (Intel/AMD), padahal HP Android adalah **ARM64**. Binary tidak bisa di-load.
+
+**Solusi**: Pakai **engine library (WASM)** yang tidak butuh native binary sama sekali.
+
+```bash
+# Jalankan script fix khusus
+bash fix-prisma-engine.sh
+```
+
+**Atau manual**:
+```bash
+# 1. Hapus semua binary native lama
+rm -rf node_modules/.prisma node_modules/@prisma/engines
+
+# 2. Pastikan schema.prisma punya engineType = "library"
+#    (kalau belum, edit prisma/schema.prisma, tambahkan di generator block):
+#    generator client {
+#      provider   = "prisma-client-js"
+#      engineType = "library"
+#    }
+
+# 3. Set env var dan generate ulang
+export PRISMA_CLIENT_ENGINE_TYPE=library
+npx prisma generate --force-reset
+
+# 4. Verify tidak ada .so.node
+find node_modules/.prisma -name "*.so.node"  # harus kosong
+
+# 5. Test
+node -e "new (require('@prisma/client').PrismaClient)().\$connect().then(()=>console.log('OK'))"
+
+# 6. Jalankan app
+bash start-termux.sh
+```
+
+**Kenapa engine library lebih baik untuk Termux?**
+- Native binary (`.so.node`) Prisma tidak tersedia untuk android-arm64
+- Engine library pakai WASM/JS — jalan di semua platform
+- Sedikit lebih lambat (10-20%) tapi 100% kompatibel
+- Tidak perlu download binary besar (library engine ~10MB vs native binary ~50MB per platform)
+
+Schema.prisma dan script `start-termux.sh` versi baru sudah otomatis pakai engine library.
+
+---
+
 ### ⚠️ Error: "@prisma/client did not initialize yet" atau "prisma schema validation"
 
 **Akar Penyebab**: Project ini pakai **Prisma 6.11.1**, tapi `npm install` di Termux Anda mungkin resolve ke **Prisma 7.x** yang punya breaking changes (datasource `url` tidak lagi didukung, dll).
